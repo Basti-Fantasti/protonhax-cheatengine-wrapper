@@ -5,7 +5,7 @@ Run with: uv run ce-autostart.py [command] [args]
 
 Commands:
   init                          - Interactive configuration setup
-  start [game_uid]              - Start CheatEngine for a running game (default)
+  start [game_uid] [--exe PATH] - Start CheatEngine for a running game (default)
   menu                          - Interactive game browser and manager
   modify-launchoptions <ID>     - Set LaunchOptions for a specific game
   modify-all-launchoptions      - Set LaunchOptions for all installed games
@@ -1488,13 +1488,23 @@ def cmd_init() -> None:
         sys.exit(1)
 
 
-def cmd_start(uid: str | None, config: dict) -> None:
-    """Handle start command to launch CheatEngine."""
-    if "cheatengine" not in config or "executable_path" not in config.get("cheatengine", {}):
-        print("Error: Missing 'cheatengine.executable_path' in config file.", file=sys.stderr)
-        sys.exit(1)
+def cmd_start(uid: str | None, config: dict, alternative_exe: str | None = None) -> None:
+    """
+    Handle start command to launch CheatEngine.
 
-    executable_path = config["cheatengine"]["executable_path"]
+    Args:
+        uid: Game UID (optional, will be detected if not provided)
+        config: Configuration dictionary
+        alternative_exe: Alternative executable path to use instead of config (optional)
+    """
+    # Determine which executable to use
+    if alternative_exe:
+        executable_path = alternative_exe
+    else:
+        if "cheatengine" not in config or "executable_path" not in config.get("cheatengine", {}):
+            print("Error: Missing 'cheatengine.executable_path' in config file.", file=sys.stderr)
+            sys.exit(1)
+        executable_path = config["cheatengine"]["executable_path"]
 
     # Get running game uid if not provided
     if not uid:
@@ -1521,10 +1531,10 @@ def main() -> None:
     # Parse command-line arguments
     if len(sys.argv) < 2:
         cmd = "start"
-        arg = None
+        args = []
     else:
         cmd = sys.argv[1]
-        arg = sys.argv[2] if len(sys.argv) > 2 else None
+        args = sys.argv[2:]
 
     # Handle init command separately (doesn't need config)
     if cmd == "init":
@@ -1535,27 +1545,50 @@ def main() -> None:
     config = load_config()
 
     if cmd == "start":
-        cmd_start(arg, config)
+        # Parse start command arguments: [uid] [--exe PATH]
+        uid = None
+        alternative_exe = None
+
+        i = 0
+        while i < len(args):
+            if args[i] == "--exe" or args[i] == "-e":
+                if i + 1 < len(args):
+                    alternative_exe = args[i + 1]
+                    i += 2
+                else:
+                    print("Error: --exe flag requires a path argument", file=sys.stderr)
+                    sys.exit(1)
+            elif not uid and not args[i].startswith("-"):
+                # First non-flag argument is the UID
+                uid = args[i]
+                i += 1
+            else:
+                print(f"Error: Unknown argument '{args[i]}'", file=sys.stderr)
+                sys.exit(1)
+
+        cmd_start(uid, config, alternative_exe)
     elif cmd == "menu":
         display_interactive_menu(config)
     elif cmd == "modify-launchoptions":
+        arg = args[0] if args else None
         cmd_modify_launchoptions(arg, config)
     elif cmd == "modify-all-launchoptions":
         cmd_modify_all_launchoptions(config)
     elif cmd == "remove-launchoptions":
+        arg = args[0] if args else None
         cmd_remove_launchoptions(arg, config)
     elif cmd == "remove-all-launchoptions":
         cmd_remove_all_launchoptions(config)
     else:
         print(f"Error: Unknown command '{cmd}'", file=sys.stderr)
         print("\nUsage:", file=sys.stderr)
-        print("  ce-autostart.py init                       - Interactive configuration setup", file=sys.stderr)
-        print("  ce-autostart.py [start] [uid]              - Start CheatEngine for a game", file=sys.stderr)
-        print("  ce-autostart.py menu                       - Interactive game browser and manager", file=sys.stderr)
-        print("  ce-autostart.py modify-launchoptions <ID>  - Set LaunchOptions for a game", file=sys.stderr)
-        print("  ce-autostart.py modify-all-launchoptions   - Set LaunchOptions for all games", file=sys.stderr)
-        print("  ce-autostart.py remove-launchoptions <ID>  - Remove LaunchOptions from a game", file=sys.stderr)
-        print("  ce-autostart.py remove-all-launchoptions   - Remove LaunchOptions from all games", file=sys.stderr)
+        print("  ce-autostart.py init                            - Interactive configuration setup", file=sys.stderr)
+        print("  ce-autostart.py [start] [uid] [--exe PATH]      - Start CheatEngine for a game", file=sys.stderr)
+        print("  ce-autostart.py menu                            - Interactive game browser and manager", file=sys.stderr)
+        print("  ce-autostart.py modify-launchoptions <ID>       - Set LaunchOptions for a game", file=sys.stderr)
+        print("  ce-autostart.py modify-all-launchoptions        - Set LaunchOptions for all games", file=sys.stderr)
+        print("  ce-autostart.py remove-launchoptions <ID>       - Remove LaunchOptions from a game", file=sys.stderr)
+        print("  ce-autostart.py remove-all-launchoptions        - Remove LaunchOptions from all games", file=sys.stderr)
         sys.exit(1)
 
 

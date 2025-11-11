@@ -79,6 +79,30 @@ The script will:
 3. (Optional) Look up the game title using the cached Steam app list
 4. Launch CheatEngine attached to that game using `protonhax run`
 
+#### Alternative Executable
+
+You can override the configured CheatEngine executable by passing an alternative path with the `--exe` flag:
+
+```bash
+# Use alternative executable for the running game
+uv run ce-autostart.py start --exe ~/custom/ce.exe
+
+# Use alternative executable for a specific game UID
+uv run ce-autostart.py start 12345 --exe ~/custom/ce.exe
+
+# Short form
+uv run ce-autostart.py start -e ~/custom/ce.exe
+
+# Arguments can be in any order
+uv run ce-autostart.py start --exe ~/custom/ce.exe 12345
+```
+
+This is useful for:
+- Testing different CheatEngine versions
+- Using portable CheatEngine builds without modifying the config
+- Running multiple CheatEngine instances
+- Temporary overrides for specific games
+
 ### Set LaunchOptions for a single game
 
 ```bash
