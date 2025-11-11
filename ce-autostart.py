@@ -895,7 +895,8 @@ def display_interactive_menu(config: dict) -> None:
     launch_options_template = steam_config.get("launch_options_template", "protonhax init %COMMAND%")
 
     # Get installed games
-    steamapps_path = Path(steam_path).expanduser().parent / "steamapps"
+#    steamapps_path = Path(steam_path).expanduser().parent / "steamapps"
+    steamapps_path = Path(steam_path).expanduser() / "steamapps"
     installed_games = get_installed_games(str(steamapps_path))
 
     if not installed_games:
