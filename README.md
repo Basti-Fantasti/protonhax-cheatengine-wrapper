@@ -61,6 +61,7 @@ Launches an interactive configuration wizard that:
 - Prompts for the CheatEngine executable path with validation
 - Asks for the Steam directory location (defaults to Linux Steam path)
 - Allows enabling/disabling Steam API game title lookup
+- Configures exclusion patterns for apps that should never be modified (Proton, Steam Linux Runtime, etc.)
 - Validates all paths exist before saving
 - Re-prompts on invalid input with helpful error messages
 
@@ -141,9 +142,11 @@ When you select a game, a submenu appears with the following options:
 | **M** | Modify LaunchOptions for the selected game |
 | **V** | View current LaunchOptions configuration |
 | **R** | Remove LaunchOptions from the selected game |
+| **A** | Modify LaunchOptions for all available games (excluded games skipped) |
+| **D** | Remove LaunchOptions from all available games (excluded games skipped) |
 | **C** | Cancel and return to game list |
 
-The menu provides real-time visual feedback showing the selected row highlighted in blue, making it easy to navigate through your game library.
+The menu provides real-time visual feedback showing the selected row highlighted in blue, making it easy to navigate through your game library. Excluded games (e.g., Proton versions, Steam Linux Runtime) are displayed in dim gray text and cannot be selected or modified.
 
 #### Menu Features
 
@@ -151,6 +154,8 @@ The menu provides real-time visual feedback showing the selected row highlighted
 - **Real-time Status Updates**: Immediately reflects changes to LaunchOption status after modifications
 - **View Configuration**: Inspect the exact LaunchOptions command for any game
 - **Quick Management**: Modify, remove, or add LaunchOptions without command-line arguments
+- **Batch Operations**: Modify or remove LaunchOptions for all games at once (with confirmation)
+- **Protected Apps**: Excluded apps (Proton, Steam Linux Runtime) are clearly marked and cannot be modified
 - **User-Friendly**: Color-coded output with clear navigation hints
 
 #### Usage Workflow Examples
@@ -262,6 +267,70 @@ lookup_enabled = true
 # Launch options template for protonhax
 # The %COMMAND% placeholder will be preserved for Steam to replace with the actual command
 launch_options_template = "protonhax init %COMMAND%"
+
+# Regex patterns for apps that should never be modified
+# These apps are automatically excluded from all operations (batch or individual)
+# and appear as "Excluded" in the menu with dim gray styling
+# Patterns are matched case-insensitively against game names
+excluded_app_patterns = [
+    "^Proton",
+    "^Steam Linux Runtime",
+]
+```
+
+### Excluded Applications
+
+The script includes a powerful exclusion mechanism to protect critical system components from accidental modification:
+
+#### Default Exclusions
+
+By default, the following patterns are excluded:
+- **All Proton versions**: `^Proton` (matches Proton 9.0, Proton 10.0, Proton Experimental, etc.)
+- **Steam Linux Runtime**: `^Steam Linux Runtime` (matches all versions and variants)
+
+These are system components essential for running games and should never be modified.
+
+#### Customizing Exclusions
+
+**Interactive Configuration:**
+```bash
+uv run ce-autostart.py init
+```
+
+When prompted, you can:
+- Keep the default exclusion patterns
+- Customize patterns by providing your own regex expressions
+- Add multiple patterns (one per line)
+
+**Manual Configuration:**
+
+Edit your config file to modify exclusion patterns:
+```toml
+excluded_app_patterns = [
+    "^Proton",
+    "^Steam Linux Runtime",
+    "My Protected Game",
+    "^Demo .*",
+]
+```
+
+#### Exclusion Behavior
+
+- **Menu View**: Excluded apps appear in dim gray text and cannot be selected or modified
+- **Batch Operations**: Excluded apps are automatically skipped when using "Modify All" or "Remove All"
+- **Command-Line Operations**: Excluded apps are protected in batch operations but can be modified individually if needed via command-line
+- **Clear Feedback**: Summary counts show how many apps were excluded from each operation
+
+#### Regex Pattern Examples
+
+```toml
+excluded_app_patterns = [
+    "^Proton",              # Matches apps starting with "Proton"
+    "^Steam Linux Runtime",  # Matches Steam runtime packages
+    "Demo$",                # Matches apps ending with "Demo"
+    "Test",                 # Matches any app containing "Test"
+    "Soundtrack",           # Matches soundtrack packages
+]
 ```
 
 ### LaunchOptions Management

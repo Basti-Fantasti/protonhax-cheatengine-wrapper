@@ -26,6 +26,9 @@ from rich.table import Table
 from rich.console import Console
 from rich.text import Text
 
+# Cache for compiled regex patterns
+_EXCLUDED_PATTERNS_CACHE = {}
+
 CONFIG_PATHS = [
     Path.home() / ".config" / "ce-autostart" / "config.toml",
     Path.cwd() / "ce-autostart-config.toml",
@@ -51,6 +54,40 @@ def load_config() -> dict:
     for path in CONFIG_PATHS:
         print(f"  - {path}", file=sys.stderr)
     sys.exit(1)
+
+
+def is_app_excluded(app_id: str, app_name: str, patterns: list[str] | None = None) -> bool:
+    """
+    Check if an app should be excluded based on regex patterns.
+
+    Args:
+        app_id: The app ID (not used for matching, but kept for context)
+        app_name: The app name to match against patterns
+        patterns: List of regex patterns to match against
+
+    Returns:
+        True if the app matches any exclusion pattern, False otherwise
+    """
+    if not patterns:
+        return False
+
+    # Use cache key to compile patterns once
+    cache_key = tuple(patterns)
+    if cache_key not in _EXCLUDED_PATTERNS_CACHE:
+        try:
+            _EXCLUDED_PATTERNS_CACHE[cache_key] = [re.compile(p, re.IGNORECASE) for p in patterns]
+        except re.error as e:
+            print(f"Warning: Invalid regex pattern: {e}", file=sys.stderr)
+            return False
+
+    compiled_patterns = _EXCLUDED_PATTERNS_CACHE[cache_key]
+
+    # Check if app name matches any pattern
+    for pattern in compiled_patterns:
+        if pattern.search(app_name):
+            return True
+
+    return False
 
 
 def get_running_game_uid() -> str:
@@ -370,10 +407,16 @@ def write_vdf(data: dict, indent: int = 0) -> str:
     return '\n'.join(lines) + '\n'
 
 
-def get_installed_games(steam_path: str | None = None) -> list[str]:
+def get_installed_games(steam_path: str | None = None, excluded_patterns: list[str] | None = None) -> tuple[list[str], list[str]]:
     """
     Get list of installed game IDs by reading appmanifest_*.acf files.
-    Returns list of app IDs as strings.
+
+    Args:
+        steam_path: Path to steamapps directory
+        excluded_patterns: List of regex patterns for apps to exclude
+
+    Returns:
+        Tuple of (included_app_ids, excluded_app_ids) as sorted lists of strings.
     """
     if steam_path is None:
         steam_path = "~/.local/share/Steam/steamapps"
@@ -382,16 +425,26 @@ def get_installed_games(steam_path: str | None = None) -> list[str]:
 
     if not steamapps_dir.exists():
         print(f"Warning: Steam steamapps directory not found: {steamapps_dir}", file=sys.stderr)
-        return []
+        return [], []
 
-    app_ids = []
+    included_apps = []
+    excluded_apps = []
+
     for manifest_file in steamapps_dir.glob("appmanifest_*.acf"):
         # Extract ID from filename
         app_id = manifest_file.stem.replace("appmanifest_", "")
         if app_id.isdigit():
-            app_ids.append(app_id)
+            # Get game name to check exclusion
+            game_info = get_game_info(app_id, steam_path)
+            game_name = game_info.get("name", f"Game {app_id}")
 
-    return sorted(app_ids)
+            # Check if excluded
+            if is_app_excluded(app_id, game_name, excluded_patterns):
+                excluded_apps.append(app_id)
+            else:
+                included_apps.append(app_id)
+
+    return sorted(included_apps), sorted(excluded_apps)
 
 
 def get_game_info(app_id: str, steam_path: str | None = None) -> dict:
@@ -889,29 +942,42 @@ def display_interactive_menu(config: dict) -> None:
     """
     Display an interactive menu to browse and modify Steam games.
     Uses arrow keys to navigate and Enter to select.
+    Excludes apps matching configured patterns.
     """
     steam_config = config.get("steam", {})
     steam_path = steam_config.get("steam_path", "~/.local/share/Steam")
     launch_options_template = steam_config.get("launch_options_template", "protonhax init %COMMAND%")
+    excluded_patterns = steam_config.get("excluded_app_patterns", [])
 
     # Get installed games
 #    steamapps_path = Path(steam_path).expanduser().parent / "steamapps"
     steamapps_path = Path(steam_path).expanduser() / "steamapps"
-    installed_games = get_installed_games(str(steamapps_path))
+    included_games, excluded_games = get_installed_games(str(steamapps_path), excluded_patterns)
 
-    if not installed_games:
+    if not included_games and not excluded_games:
         print("No installed games found", file=sys.stderr)
         return
 
-    # Prepare game data with status
+    # Prepare game data with status for included games only
     games_data = []
-    for app_id in installed_games:
+    for app_id in included_games:
         game_info = get_game_info(app_id, str(steamapps_path))
         status = get_launchoption_status(app_id, steam_path)
         games_data.append({
             "app_id": app_id,
             "name": game_info["name"],
-            "status": status
+            "status": status,
+            "excluded": False
+        })
+
+    # Add excluded games with "Excluded" status
+    for app_id in excluded_games:
+        game_info = get_game_info(app_id, str(steamapps_path))
+        games_data.append({
+            "app_id": app_id,
+            "name": game_info["name"],
+            "status": "Excluded",
+            "excluded": True
         })
 
     # Create console for output
@@ -931,7 +997,12 @@ def display_interactive_menu(config: dict) -> None:
 
         # Add rows with highlighting for selected row
         for idx, game in enumerate(games_data):
-            if idx == current_selection:
+            if game["excluded"]:
+                # Excluded games shown in gray, never selectable
+                id_text = Text(game["app_id"], style="dim")
+                name_text = Text(game["name"], style="dim")
+                status_text = Text(game["status"], style="dim")
+            elif idx == current_selection:
                 # Highlight selected row
                 id_text = Text(game["app_id"], style="bold white on blue")
                 name_text = Text(game["name"], style="bold white on blue")
@@ -945,6 +1016,8 @@ def display_interactive_menu(config: dict) -> None:
 
         console.print(table)
         console.print("\n[cyan]Navigation:[/cyan] Use [bold]↑[/bold]/[bold]↓[/bold] to move, [bold]Enter[/bold] to select, [bold]Q[/bold]/[bold]Esc[/bold] to quit")
+        if excluded_games:
+            console.print(f"\n[dim]Showing {len(included_games)} games ({len(excluded_games)} excluded)[/dim]")
 
         # Get keyboard input
         try:
@@ -952,12 +1025,22 @@ def display_interactive_menu(config: dict) -> None:
 
             if key == "up":
                 current_selection = max(0, current_selection - 1)
+                # Skip excluded games when navigating up
+                while current_selection > 0 and games_data[current_selection]["excluded"]:
+                    current_selection -= 1
             elif key == "down":
                 current_selection = min(len(games_data) - 1, current_selection + 1)
+                # Skip excluded games when navigating down
+                while current_selection < len(games_data) - 1 and games_data[current_selection]["excluded"]:
+                    current_selection += 1
             elif key == "enter":
                 selected_game = games_data[current_selection]
-                handle_game_selection(selected_game, config, steam_path, launch_options_template)
-                current_selection = 0  # Reset selection after action
+                # Prevent selecting excluded games
+                if not selected_game["excluded"]:
+                    handle_game_selection(selected_game, config, steam_path, launch_options_template)
+                    current_selection = 0  # Reset selection after action
+                else:
+                    console.print("[yellow]Cannot modify excluded games[/yellow]")
             elif key in ["q", "esc"]:
                 console.print("[yellow]Exiting menu...[/yellow]")
                 break
@@ -1026,9 +1109,11 @@ def handle_game_selection(game: dict, config: dict, steam_path: str, launch_opti
         console.print("[bold]M[/bold] - Modify LaunchOptions")
         console.print("[bold]V[/bold] - View Current LaunchOptions")
         console.print("[bold]R[/bold] - Remove LaunchOptions")
+        console.print("[bold]A[/bold] - Modify All Games LaunchOptions")
+        console.print("[bold]D[/bold] - Remove All Games LaunchOptions")
         console.print("[bold]C[/bold] - Cancel (back to menu)\n")
 
-        choice = Prompt.ask("[cyan]Choose option[/cyan]", choices=["m", "v", "r", "c"], show_default=False).lower()
+        choice = Prompt.ask("[cyan]Choose option[/cyan]", choices=["m", "v", "r", "a", "d", "c"], show_default=False).lower()
 
         if choice == "m":
             localconfig_path = find_localconfig_vdf(steam_path)
@@ -1076,6 +1161,118 @@ def handle_game_selection(game: dict, config: dict, steam_path: str, launch_opti
                 game["status"] = get_launchoption_status(game["app_id"], steam_path)
                 console.print("\n[green]LaunchOptions removed if they existed.[/green]")
                 input("Press Enter to continue...")
+            else:
+                console.print("[red]Error: Could not find localconfig.vdf[/red]")
+                input("Press Enter to continue...")
+        elif choice == "a":
+            # Modify all games LaunchOptions (excluding excluded games)
+            localconfig_path = find_localconfig_vdf(steam_path)
+            if localconfig_path:
+                excluded_patterns = config.get("steam", {}).get("excluded_app_patterns", [])
+                included_games, excluded_games = get_installed_games(str(Path(steam_path).expanduser() / "steamapps"), excluded_patterns)
+                if included_games:
+                    console.print(f"\n[yellow]⚠ WARNING: Modifying LaunchOptions for {len(included_games)} games...")
+                    if excluded_games:
+                        console.print(f"({len(excluded_games)} excluded games will be skipped)[/yellow]")
+                    else:
+                        console.print("[/yellow]")
+                    response = input(f"\nModify LaunchOptions for {len(included_games)} games? (y/n): ").strip().lower()
+                    if response == "y":
+                        modified_count = 0
+                        skipped_count = 0
+                        for app_id in included_games:
+                            if modify_launch_options(app_id, launch_options_template, localconfig_path, ask_if_exists=False):
+                                modified_count += 1
+                            else:
+                                skipped_count += 1
+
+                        console.print(f"\n[green]Summary:[/green]")
+                        console.print(f"  Modified:  {modified_count}")
+                        console.print(f"  Skipped:   {skipped_count}")
+                        console.print(f"  Processed: {len(included_games)}")
+                        if excluded_games:
+                            console.print(f"  Excluded:  {len(excluded_games)}")
+                        input("Press Enter to continue...")
+                    else:
+                        console.print("[cyan]Cancelled[/cyan]")
+                        input("Press Enter to continue...")
+                else:
+                    console.print("[red]Error: No available games found (all are excluded or none installed)[/red]")
+                    input("Press Enter to continue...")
+            else:
+                console.print("[red]Error: Could not find localconfig.vdf[/red]")
+                input("Press Enter to continue...")
+        elif choice == "d":
+            # Remove all games LaunchOptions (excluding excluded games)
+            localconfig_path = find_localconfig_vdf(steam_path)
+            if localconfig_path:
+                try:
+                    with open(localconfig_path, "r") as f:
+                        content = f.read()
+                    localconfig_data = parse_vdf(content)
+
+                    apps = (
+                        localconfig_data
+                        .get("Software", {})
+                        .get("Valve", {})
+                        .get("Steam", {})
+                        .get("apps", {})
+                    )
+
+                    # Get excluded patterns to filter out
+                    excluded_patterns = config.get("steam", {}).get("excluded_app_patterns", [])
+                    steamapps_path = Path(steam_path).expanduser() / "steamapps"
+
+                    # Collect games with LaunchOptions that are NOT excluded
+                    games_with_options = []
+                    excluded_with_options = []
+                    for app_id, app_data in apps.items():
+                        if isinstance(app_data, dict) and "LaunchOptions" in app_data:
+                            # Get game info to check if it's excluded
+                            game_info = get_game_info(app_id, str(steamapps_path))
+                            game_name = game_info.get("name", f"Game {app_id}")
+
+                            if is_app_excluded(app_id, game_name, excluded_patterns):
+                                excluded_with_options.append(app_id)
+                            else:
+                                games_with_options.append(app_id)
+
+                    if games_with_options:
+                        console.print(f"\n[yellow]⚠ WARNING: Removing LaunchOptions from {len(games_with_options)} games...")
+                        if excluded_with_options:
+                            console.print(f"({len(excluded_with_options)} excluded games will be skipped)[/yellow]")
+                        else:
+                            console.print("[/yellow]")
+                        response = input(f"\nRemove LaunchOptions for {len(games_with_options)} games? (y/n): ").strip().lower()
+                        if response == "y":
+                            removed_count = 0
+                            skipped_count = 0
+                            for app_id in sorted(games_with_options):
+                                if remove_launch_options(app_id, localconfig_path, ask_if_exists=False):
+                                    removed_count += 1
+                                else:
+                                    skipped_count += 1
+
+                            console.print(f"\n[green]Summary:[/green]")
+                            console.print(f"  Removed:   {removed_count}")
+                            console.print(f"  Skipped:   {skipped_count}")
+                            console.print(f"  Processed: {len(games_with_options)}")
+                            if excluded_with_options:
+                                console.print(f"  Excluded:  {len(excluded_with_options)}")
+                            input("Press Enter to continue...")
+                        else:
+                            console.print("[cyan]Cancelled[/cyan]")
+                            input("Press Enter to continue...")
+                    else:
+                        console.print("[yellow]No available games with LaunchOptions found")
+                        if excluded_with_options:
+                            console.print(f"({len(excluded_with_options)} excluded games have LaunchOptions but cannot be modified)[/yellow]")
+                        else:
+                            console.print("[/yellow]")
+                        input("Press Enter to continue...")
+                except Exception as e:
+                    console.print(f"[red]Error: {e}[/red]")
+                    input("Press Enter to continue...")
             else:
                 console.print("[red]Error: Could not find localconfig.vdf[/red]")
                 input("Press Enter to continue...")
@@ -1230,6 +1427,43 @@ def cmd_init() -> None:
     else:
         # Set default if not present
         config["steam"]["launch_options_template"] = "protonhax init %COMMAND%"
+
+    # Handle excluded app patterns
+    print("\n" + "-" * 60)
+    print("Excluded Applications")
+    print("-" * 60)
+
+    default_patterns = config["steam"].get("excluded_app_patterns", [
+        "^Proton",
+        "^Steam Linux Runtime",
+    ])
+
+    print(f"\nEnter regex patterns for apps that should never be modified.")
+    print(f"These patterns are matched case-insensitively against game names.")
+    print(f"Default patterns (one per line):")
+    for pattern in default_patterns:
+        print(f"  - {pattern}")
+
+    response = input(f"\nKeep default patterns? (y/n) [default: y]: ").strip().lower()
+
+    if response in ['n', 'no']:
+        print(f"\nEnter regex patterns (one per line, empty line to finish):")
+        patterns = []
+        while True:
+            pattern = input(f"Pattern {len(patterns) + 1}: ").strip()
+            if not pattern:
+                break
+            patterns.append(pattern)
+
+        if patterns:
+            config["steam"]["excluded_app_patterns"] = patterns
+            print(f"✓ Configured {len(patterns)} exclusion pattern(s)")
+        else:
+            print(f"✓ No exclusion patterns configured")
+            config["steam"]["excluded_app_patterns"] = []
+    else:
+        config["steam"]["excluded_app_patterns"] = default_patterns
+        print(f"✓ Using default exclusion patterns")
 
     # Write config file
     print("\n" + "-" * 60)

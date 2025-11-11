@@ -5,3 +5,11 @@ executable_path = "~/Games/CheatEngine/cheatengine-x86_64.exe"
 steam_path = "~/.local/share/Steam"
 lookup_enabled = true
 launch_options_template = "protonhax init %COMMAND%"
+
+# Regex patterns for apps to exclude from modification
+# These apps will be marked as "Excluded" in the menu and cannot be modified
+# Patterns are matched case-insensitively against game names
+excluded_app_patterns = [
+    "^Proton",
+    "^Steam Linux Runtime",
+]
