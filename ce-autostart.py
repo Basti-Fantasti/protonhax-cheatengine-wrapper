@@ -6,6 +6,7 @@ Run with: uv run ce-autostart.py [command] [args]
 Commands:
   init                          - Interactive configuration setup
   start [game_uid]              - Start CheatEngine for a running game (default)
+  menu                          - Interactive game browser and manager
   modify-launchoptions <ID>     - Set LaunchOptions for a specific game
   modify-all-launchoptions      - Set LaunchOptions for all installed games
   remove-launchoptions <ID>     - Remove LaunchOptions from a specific game
@@ -21,6 +22,9 @@ import json
 import requests
 from datetime import datetime, timedelta
 import re
+from rich.table import Table
+from rich.console import Console
+from rich.text import Text
 
 CONFIG_PATHS = [
     Path.home() / ".config" / "ce-autostart" / "config.toml",
@@ -388,6 +392,100 @@ def get_installed_games(steam_path: str | None = None) -> list[str]:
             app_ids.append(app_id)
 
     return sorted(app_ids)
+
+
+def get_game_info(app_id: str, steam_path: str | None = None) -> dict:
+    """
+    Get detailed game information including name and other metadata.
+    Returns a dict with keys: app_id, name, executable, install_dir
+    """
+    if steam_path is None:
+        steam_path = "~/.local/share/Steam/steamapps"
+
+    steamapps_dir = Path(steam_path).expanduser()
+    manifest_file = steamapps_dir / f"appmanifest_{app_id}.acf"
+
+    game_info = {
+        "app_id": app_id,
+        "name": f"Game {app_id}",
+        "executable": "",
+        "install_dir": "",
+    }
+
+    if not manifest_file.exists():
+        return game_info
+
+    try:
+        with open(manifest_file, "r") as f:
+            content = f.read()
+
+        # Parse the manifest file for game metadata
+        for line in content.split("\n"):
+            line = line.strip()
+            if line.startswith('"name"'):
+                # Extract game name: "name"		"Game Title"
+                parts = line.split('"', 3)
+                if len(parts) >= 4:
+                    game_info["name"] = parts[3].rstrip('"')
+            elif line.startswith('"executable"'):
+                # Extract executable path
+                parts = line.split('"', 3)
+                if len(parts) >= 4:
+                    game_info["executable"] = parts[3].rstrip('"')
+            elif line.startswith('"installdir"'):
+                # Extract install directory
+                parts = line.split('"', 3)
+                if len(parts) >= 4:
+                    game_info["install_dir"] = parts[3].rstrip('"')
+
+        return game_info
+
+    except (IOError, OSError) as e:
+        print(f"Warning: Could not read manifest file {manifest_file}: {e}", file=sys.stderr)
+        return game_info
+
+
+def get_launchoption_status(app_id: str, steam_path: str | None = None) -> str:
+    """
+    Check the LaunchOption status for a game.
+    Returns one of: "Configured", "Not Set", or "Error"
+    """
+    if steam_path is None:
+        steam_path = "~/.local/share/Steam"
+
+    try:
+        localconfig_path = find_localconfig_vdf(steam_path)
+        if not localconfig_path:
+            return "Error"
+
+        with open(localconfig_path, "r") as f:
+            content = f.read()
+
+        localconfig_data = parse_vdf(content)
+
+        # Navigate to the app section
+        try:
+            apps = (
+                localconfig_data
+                .get("Software", {})
+                .get("Valve", {})
+                .get("Steam", {})
+                .get("apps", {})
+            )
+
+            if app_id in apps and isinstance(apps[app_id], dict):
+                if "LaunchOptions" in apps[app_id]:
+                    return "Configured"
+                else:
+                    return "Not Set"
+            else:
+                return "Not Set"
+
+        except (KeyError, TypeError, AttributeError):
+            return "Error"
+
+    except Exception:
+        return "Error"
 
 
 def get_game_title(app_id: str, localconfig_data: dict) -> str | None:
@@ -787,6 +885,204 @@ def validate_steam_path(path_str: str) -> bool:
         return False
 
 
+def display_interactive_menu(config: dict) -> None:
+    """
+    Display an interactive menu to browse and modify Steam games.
+    Uses arrow keys to navigate and Enter to select.
+    """
+    steam_config = config.get("steam", {})
+    steam_path = steam_config.get("steam_path", "~/.local/share/Steam")
+    launch_options_template = steam_config.get("launch_options_template", "protonhax init %COMMAND%")
+
+    # Get installed games
+    steamapps_path = Path(steam_path).expanduser().parent / "steamapps"
+    installed_games = get_installed_games(str(steamapps_path))
+
+    if not installed_games:
+        print("No installed games found", file=sys.stderr)
+        return
+
+    # Prepare game data with status
+    games_data = []
+    for app_id in installed_games:
+        game_info = get_game_info(app_id, str(steamapps_path))
+        status = get_launchoption_status(app_id, steam_path)
+        games_data.append({
+            "app_id": app_id,
+            "name": game_info["name"],
+            "status": status
+        })
+
+    # Create console for output
+    console = Console()
+
+    # Create the interactive table
+    current_selection = 0
+
+    while True:
+        console.clear()
+
+        # Create table
+        table = Table(title="Steam Games", show_header=True, header_style="bold magenta")
+        table.add_column("ID", style="cyan", width=10)
+        table.add_column("Game Name", style="green")
+        table.add_column("LaunchOption Status", style="yellow")
+
+        # Add rows with highlighting for selected row
+        for idx, game in enumerate(games_data):
+            if idx == current_selection:
+                # Highlight selected row
+                id_text = Text(game["app_id"], style="bold white on blue")
+                name_text = Text(game["name"], style="bold white on blue")
+                status_text = Text(game["status"], style="bold white on blue")
+            else:
+                id_text = Text(game["app_id"])
+                name_text = Text(game["name"])
+                status_text = Text(game["status"])
+
+            table.add_row(id_text, name_text, status_text)
+
+        console.print(table)
+        console.print("\n[cyan]Navigation:[/cyan] Use [bold]↑[/bold]/[bold]↓[/bold] to move, [bold]Enter[/bold] to select, [bold]Q[/bold]/[bold]Esc[/bold] to quit")
+
+        # Get keyboard input
+        try:
+            key = get_key()
+
+            if key == "up":
+                current_selection = max(0, current_selection - 1)
+            elif key == "down":
+                current_selection = min(len(games_data) - 1, current_selection + 1)
+            elif key == "enter":
+                selected_game = games_data[current_selection]
+                handle_game_selection(selected_game, config, steam_path, launch_options_template)
+                current_selection = 0  # Reset selection after action
+            elif key in ["q", "esc"]:
+                console.print("[yellow]Exiting menu...[/yellow]")
+                break
+        except KeyboardInterrupt:
+            console.print("\n[yellow]Menu cancelled[/yellow]")
+            break
+        except Exception as e:
+            console.print(f"[red]Error: {e}[/red]")
+            break
+
+
+def get_key() -> str:
+    """
+    Get keyboard input from user.
+    Returns: 'up', 'down', 'enter', 'q', 'esc', or the character
+    """
+    import sys
+    import tty
+    import termios
+
+    fd = sys.stdin.fileno()
+    old_settings = termios.tcgetattr(fd)
+
+    try:
+        tty.setraw(fd)
+        ch = sys.stdin.read(1)
+
+        if ch == '\x1b':  # Escape sequence
+            next_chars = sys.stdin.read(2)
+            if next_chars == '[A':
+                return 'up'
+            elif next_chars == '[B':
+                return 'down'
+            elif next_chars == '[':
+                # Handle other escape sequences
+                ch2 = sys.stdin.read(1)
+                if ch2 == 'Z':  # Shift+Tab
+                    return 'up'
+                return 'unknown'
+            return 'esc'
+        elif ch == '\r' or ch == '\n':
+            return 'enter'
+        elif ch.lower() == 'q':
+            return 'q'
+        else:
+            return ch.lower()
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+
+
+def handle_game_selection(game: dict, config: dict, steam_path: str, launch_options_template: str) -> None:
+    """
+    Handle the menu options for a selected game.
+    """
+    from rich.console import Console
+    from rich.prompt import Prompt
+
+    console = Console()
+
+    while True:
+        console.clear()
+        console.print(f"\n[bold blue]Selected Game:[/bold blue] {game['name']} (ID: {game['app_id']})")
+        console.print(f"[yellow]LaunchOption Status: {game['status']}[/yellow]\n")
+
+        console.print("[cyan]Options:[/cyan]")
+        console.print("[bold]M[/bold] - Modify LaunchOptions")
+        console.print("[bold]V[/bold] - View Current LaunchOptions")
+        console.print("[bold]R[/bold] - Remove LaunchOptions")
+        console.print("[bold]C[/bold] - Cancel (back to menu)\n")
+
+        choice = Prompt.ask("[cyan]Choose option[/cyan]", choices=["m", "v", "r", "c"], show_default=False).lower()
+
+        if choice == "m":
+            localconfig_path = find_localconfig_vdf(steam_path)
+            if localconfig_path:
+                modify_launch_options(game["app_id"], launch_options_template, localconfig_path, ask_if_exists=True)
+                game["status"] = get_launchoption_status(game["app_id"], steam_path)
+                console.print("\n[green]LaunchOptions updated.[/green]")
+                input("Press Enter to continue...")
+            else:
+                console.print("[red]Error: Could not find localconfig.vdf[/red]")
+                input("Press Enter to continue...")
+        elif choice == "v":
+            localconfig_path = find_localconfig_vdf(steam_path)
+            if localconfig_path:
+                try:
+                    with open(localconfig_path, "r") as f:
+                        content = f.read()
+                    localconfig_data = parse_vdf(content)
+
+                    apps = (
+                        localconfig_data
+                        .get("Software", {})
+                        .get("Valve", {})
+                        .get("Steam", {})
+                        .get("apps", {})
+                    )
+
+                    if game["app_id"] in apps and "LaunchOptions" in apps[game["app_id"]]:
+                        launch_options = apps[game["app_id"]]["LaunchOptions"]
+                        console.print(f"\n[green]Current LaunchOptions:[/green]\n{launch_options}")
+                    else:
+                        console.print("\n[yellow]No LaunchOptions configured for this game[/yellow]")
+
+                    input("\nPress Enter to continue...")
+                except Exception as e:
+                    console.print(f"[red]Error reading LaunchOptions: {e}[/red]")
+                    input("Press Enter to continue...")
+            else:
+                console.print("[red]Error: Could not find localconfig.vdf[/red]")
+                input("Press Enter to continue...")
+        elif choice == "r":
+            localconfig_path = find_localconfig_vdf(steam_path)
+            if localconfig_path:
+                remove_launch_options(game["app_id"], localconfig_path, ask_if_exists=True)
+                game["status"] = get_launchoption_status(game["app_id"], steam_path)
+                console.print("\n[green]LaunchOptions removed if they existed.[/green]")
+                input("Press Enter to continue...")
+            else:
+                console.print("[red]Error: Could not find localconfig.vdf[/red]")
+                input("Press Enter to continue...")
+        elif choice == "c":
+            console.print("[cyan]Returning to game list...[/cyan]")
+            break
+
+
 def validate_protonhax_installed() -> str:
     """
     Validate that protonhax is installed by executing 'which protonhax'.
@@ -1005,6 +1301,8 @@ def main() -> None:
 
     if cmd == "start":
         cmd_start(arg, config)
+    elif cmd == "menu":
+        display_interactive_menu(config)
     elif cmd == "modify-launchoptions":
         cmd_modify_launchoptions(arg, config)
     elif cmd == "modify-all-launchoptions":
@@ -1018,6 +1316,7 @@ def main() -> None:
         print("\nUsage:", file=sys.stderr)
         print("  ce-autostart.py init                       - Interactive configuration setup", file=sys.stderr)
         print("  ce-autostart.py [start] [uid]              - Start CheatEngine for a game", file=sys.stderr)
+        print("  ce-autostart.py menu                       - Interactive game browser and manager", file=sys.stderr)
         print("  ce-autostart.py modify-launchoptions <ID>  - Set LaunchOptions for a game", file=sys.stderr)
         print("  ce-autostart.py modify-all-launchoptions   - Set LaunchOptions for all games", file=sys.stderr)
         print("  ce-autostart.py remove-launchoptions <ID>  - Remove LaunchOptions from a game", file=sys.stderr)

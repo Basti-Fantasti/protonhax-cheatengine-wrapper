@@ -1,24 +1,7 @@
-# CheatEngine Auto-Start Configuration
-# This file configures the behavior of the ce-autostart script
-
 [cheatengine]
-# Path to the CheatEngine executable
-# Supports ~ for home directory expansion
 executable_path = "~/Games/CheatEngine/cheatengine-x86_64.exe"
 
 [steam]
-# Path to the Steam installation directory
-# Default: ~/.local/share/Steam/steamapps
-# Supports ~ for home directory expansion
-steam_path = "~/.local/share/Steam/steamapps"
-
-# Look up the game title from the Steam official API
-# If enabled, the script will fetch and cache the Steam app list locally
-# The cache is automatically updated once per week
-# First, the script will check the local Steam folder for app manifest files
-# Only if no local manifest is found, it will fall back to the Steam API
+steam_path = "~/.local/share/Steam"
 lookup_enabled = true
-
-# Launch options template for protonhax
-# The %COMMAND% placeholder will be preserved for Steam to replace with the actual command
 launch_options_template = "protonhax init %COMMAND%"

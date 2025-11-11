@@ -3,7 +3,7 @@ name = "ce-autostart"
 version = "0.1.0"
 description = "Automatically start CheatEngine for Steam games running on Proton"
 requires-python = ">=3.11"
-dependencies = ["requests>=2.31.0", "tomli_w>=1.0.0"]
+dependencies = ["requests>=2.31.0", "tomli_w>=1.0.0", "rich>=13.0.0"]
 
 [tool.uv]
 managed = true
