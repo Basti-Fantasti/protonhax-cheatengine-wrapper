@@ -787,11 +787,48 @@ def validate_steam_path(path_str: str) -> bool:
         return False
 
 
+def validate_protonhax_installed() -> str:
+    """
+    Validate that protonhax is installed by executing 'which protonhax'.
+    Returns the path if found, otherwise exits with error.
+    """
+    try:
+        result = subprocess.run(
+            ["which", "protonhax"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        path = result.stdout.strip()
+
+        # Verify it's the expected path
+        if path == "/usr/bin/protonhax":
+            return path
+        else:
+            # Allow other paths but warn the user
+            print(f"⚠ Warning: protonhax found at {path}, expected /usr/bin/protonhax", file=sys.stderr)
+            return path
+
+    except subprocess.CalledProcessError:
+        print("Error: 'protonhax' command not found in PATH", file=sys.stderr)
+        print("\nPlease install protonhax from: https://github.com/mikeslattery/protonhax", file=sys.stderr)
+        sys.exit(1)
+    except FileNotFoundError:
+        print("Error: 'which' command not found", file=sys.stderr)
+        print("\nPlease ensure protonhax is installed from: https://github.com/mikeslattery/protonhax", file=sys.stderr)
+        sys.exit(1)
+
+
 def cmd_init() -> None:
     """Handle init command for guided configuration setup."""
     print("=" * 60)
     print("CheatEngine Auto-Start Configuration Setup")
     print("=" * 60)
+
+    # Validate protonhax is installed
+    print("\nValidating protonhax installation...")
+    protonhax_path = validate_protonhax_installed()
+    print(f"✓ Found protonhax at: {protonhax_path}")
 
     # Determine config file location
     config_path = get_config_path()
