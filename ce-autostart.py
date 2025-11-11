@@ -4,6 +4,7 @@ CheatEngine auto-start script for Steam games running on Proton.
 Run with: uv run ce-autostart.py [command] [args]
 
 Commands:
+  init                          - Interactive configuration setup
   start [game_uid]              - Start CheatEngine for a running game (default)
   modify-launchoptions <ID>     - Set LaunchOptions for a specific game
   modify-all-launchoptions      - Set LaunchOptions for all installed games
@@ -15,6 +16,7 @@ import subprocess
 import sys
 from pathlib import Path
 import tomllib  # Python 3.11+
+import tomli_w
 import json
 import requests
 from datetime import datetime, timedelta
@@ -742,6 +744,182 @@ def cmd_remove_all_launchoptions(config: dict) -> None:
     print(f"{'='*50}")
 
 
+def get_config_path() -> Path:
+    """
+    Get the path to the config file that should be written.
+    Prefers the current directory config if it exists, otherwise uses user config directory.
+    """
+    cwd_config = Path.cwd() / "ce-autostart-config.toml"
+    if cwd_config.exists():
+        return cwd_config
+
+    user_config = Path.home() / ".config" / "ce-autostart" / "config.toml"
+    return user_config
+
+
+def validate_executable_path(path_str: str) -> bool:
+    """
+    Validate that the executable path exists and is readable.
+    """
+    try:
+        exe_path = Path(path_str).expanduser()
+        if not exe_path.exists():
+            return False
+        if not exe_path.is_file():
+            return False
+        return True
+    except (OSError, ValueError):
+        return False
+
+
+def validate_steam_path(path_str: str) -> bool:
+    """
+    Validate that the Steam path exists and is readable.
+    """
+    try:
+        steam_path = Path(path_str).expanduser()
+        if not steam_path.exists():
+            return False
+        if not steam_path.is_dir():
+            return False
+        return True
+    except (OSError, ValueError):
+        return False
+
+
+def cmd_init() -> None:
+    """Handle init command for guided configuration setup."""
+    print("=" * 60)
+    print("CheatEngine Auto-Start Configuration Setup")
+    print("=" * 60)
+
+    # Determine config file location
+    config_path = get_config_path()
+    print(f"\nConfig file will be saved to: {config_path}")
+
+    # Try to load existing config for defaults
+    existing_config = {}
+    try:
+        with open(config_path, "rb") as f:
+            existing_config = tomllib.load(f)
+    except (FileNotFoundError, OSError):
+        pass
+
+    # Initialize new config structure
+    config = {
+        "cheatengine": existing_config.get("cheatengine", {}),
+        "steam": existing_config.get("steam", {}),
+    }
+
+    # Get CheatEngine executable path
+    print("\n" + "-" * 60)
+    print("CheatEngine Configuration")
+    print("-" * 60)
+
+    default_ce_path = config["cheatengine"].get("executable_path", "~/Games/CheatEngine/cheatengine-x86_64.exe")
+    print(f"\nEnter the path to the CheatEngine executable.")
+    print(f"Default: {default_ce_path}")
+
+    while True:
+        user_input = input("CheatEngine executable path [press Enter for default]: ").strip()
+
+        if not user_input:
+            ce_path = default_ce_path
+        else:
+            ce_path = user_input
+
+        if validate_executable_path(ce_path):
+            config["cheatengine"]["executable_path"] = ce_path
+            print(f"✓ Valid path: {ce_path}")
+            break
+        else:
+            print(f"✗ Error: Could not find file at {ce_path}")
+            print("  Please try again or use the full path with ~ for home directory")
+
+    # Get Steam path
+    print("\n" + "-" * 60)
+    print("Steam Configuration")
+    print("-" * 60)
+
+    default_steam_path = config["steam"].get("steam_path", "~/.local/share/Steam")
+    print(f"\nEnter the path to your Steam installation directory.")
+    print(f"Default: {default_steam_path}")
+    print(f"(This is typically ~/.local/share/Steam on Linux)")
+
+    while True:
+        user_input = input("Steam path [press Enter for default]: ").strip()
+
+        if not user_input:
+            steam_path = default_steam_path
+        else:
+            steam_path = user_input
+
+        if validate_steam_path(steam_path):
+            config["steam"]["steam_path"] = steam_path
+            print(f"✓ Valid path: {steam_path}")
+            break
+        else:
+            print(f"✗ Error: Could not find directory at {steam_path}")
+            print("  Please try again or use the full path with ~ for home directory")
+
+    # Get lookup_enabled preference
+    print("\n" + "-" * 60)
+    print("Steam API Lookup")
+    print("-" * 60)
+
+    default_lookup = config["steam"].get("lookup_enabled", True)
+    print(f"\nEnable Steam API game title lookup?")
+    print(f"This will cache the Steam app list locally and look up game names.")
+    print(f"Cache is updated weekly.")
+
+    while True:
+        response = input(f"Enable lookup? (y/n) [default: {'y' if default_lookup else 'n'}]: ").strip().lower()
+
+        if not response:
+            lookup_enabled = default_lookup
+        elif response in ['y', 'yes']:
+            lookup_enabled = True
+        elif response in ['n', 'no']:
+            lookup_enabled = False
+        else:
+            print("Please answer 'y' or 'n'")
+            continue
+
+        config["steam"]["lookup_enabled"] = lookup_enabled
+        status = "enabled" if lookup_enabled else "disabled"
+        print(f"✓ Lookup {status}")
+        break
+
+    # Preserve launch_options_template if it exists
+    if "launch_options_template" in existing_config.get("steam", {}):
+        config["steam"]["launch_options_template"] = existing_config["steam"]["launch_options_template"]
+    else:
+        # Set default if not present
+        config["steam"]["launch_options_template"] = "protonhax init %COMMAND%"
+
+    # Write config file
+    print("\n" + "-" * 60)
+    print("Saving Configuration")
+    print("-" * 60)
+
+    try:
+        # Create parent directories if needed
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(config_path, "wb") as f:
+            tomli_w.dump(config, f)
+
+        print(f"\n✓ Configuration saved to: {config_path}")
+        print("\nSetup complete! You can now run:")
+        print(f"  uv run ce-autostart.py")
+        print(f"\nTo modify individual settings later, edit the config file:")
+        print(f"  {config_path}")
+
+    except (IOError, OSError) as e:
+        print(f"\n✗ Error saving config file: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
 def cmd_start(uid: str | None, config: dict) -> None:
     """Handle start command to launch CheatEngine."""
     if "cheatengine" not in config or "executable_path" not in config.get("cheatengine", {}):
@@ -772,8 +950,6 @@ def cmd_start(uid: str | None, config: dict) -> None:
 
 def main() -> None:
     """Main entry point."""
-    config = load_config()
-
     # Parse command-line arguments
     if len(sys.argv) < 2:
         cmd = "start"
@@ -781,6 +957,14 @@ def main() -> None:
     else:
         cmd = sys.argv[1]
         arg = sys.argv[2] if len(sys.argv) > 2 else None
+
+    # Handle init command separately (doesn't need config)
+    if cmd == "init":
+        cmd_init()
+        return
+
+    # Load config for all other commands
+    config = load_config()
 
     if cmd == "start":
         cmd_start(arg, config)
@@ -795,6 +979,7 @@ def main() -> None:
     else:
         print(f"Error: Unknown command '{cmd}'", file=sys.stderr)
         print("\nUsage:", file=sys.stderr)
+        print("  ce-autostart.py init                       - Interactive configuration setup", file=sys.stderr)
         print("  ce-autostart.py [start] [uid]              - Start CheatEngine for a game", file=sys.stderr)
         print("  ce-autostart.py modify-launchoptions <ID>  - Set LaunchOptions for a game", file=sys.stderr)
         print("  ce-autostart.py modify-all-launchoptions   - Set LaunchOptions for all games", file=sys.stderr)
