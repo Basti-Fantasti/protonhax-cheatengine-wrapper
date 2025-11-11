@@ -4,37 +4,50 @@ Automatically launch CheatEngine for Steam games running on Proton with optional
 
 ## Setup
 
-1. **Quick Start (Interactive)**:
+### Step 1: Install Prerequisites
 
-   Run the interactive configuration wizard:
-   ```bash
-   uv run ce-autostart.py init
-   ```
+Please follow the [Prerequisites](#prerequisites) section to install all required tools:
+- Python 3.11+
+- uv package manager
+- protonhax
+- CheatEngine
+- Steam
 
-   This will guide you through:
-   - Setting the CheatEngine executable path
-   - Configuring your Steam installation directory
-   - Enabling/disabling the Steam API game title lookup feature
+### Step 2: Install Project Dependencies
 
-   The wizard validates all paths before saving and preserves existing settings.
+Once all prerequisites are installed, install this project's Python dependencies:
 
-2. **Manual Configuration**:
+```bash
+cd /path/to/protonhax-cheatengine-wrapper
+uv sync
+```
 
-   Edit `ce-autostart-config.toml` or create `~/.config/ce-autostart/config.toml`:
-   ```toml
-   [cheatengine]
-   executable_path = "~/Games/CheatEngine/cheatengine-x86_64.exe"
+### Step 3: Configure the Script
 
-   [steam]
-   steam_path = "~/.local/share/Steam"
-   lookup_enabled = true
-   ```
+Use the interactive configuration wizard:
 
-3. **Requirements:**
-   - Python 3.11+
-   - `uv` package manager installed
-   - `protonhax` command available in your PATH
-   - A Steam game running on Proton
+```bash
+uv run ce-autostart.py init
+```
+
+This will guide you through:
+- Setting the CheatEngine executable path (with validation)
+- Configuring your Steam installation directory
+- Enabling/disabling the Steam API game title lookup feature
+
+The wizard validates all paths before saving and preserves existing settings.
+
+**Alternative - Manual Configuration:**
+
+Edit `ce-autostart-config.toml` or create `~/.config/ce-autostart/config.toml`:
+```toml
+[cheatengine]
+executable_path = "~/Games/CheatEngine/cheatengine-x86_64.exe"
+
+[steam]
+steam_path = "~/.local/share/Steam"
+lookup_enabled = true
+```
 
 ## Usage
 
@@ -192,8 +205,97 @@ When `steam.lookup_enabled = true`, the script will:
 - **Game lookup fails**: Script continues with launch (lookup is optional)
 - **Cache update fails**: Script uses existing cache or continues without lookup
 
-## Requirements
+## Prerequisites
 
-- Python 3.11+ (for `tomllib` support)
-- External dependencies (installed via `uv`):
-  - `requests>=2.31.0` - HTTP library for fetching from Steam API
+Before using this script, you need to install and configure the following:
+
+### 1. Python 3.11+
+
+The script requires Python 3.11 or newer for `tomllib` support. Check your version:
+
+```bash
+python3 --version
+```
+
+### 2. uv Package Manager
+
+The script uses `uv` as its package manager for managing Python dependencies.
+
+**Install uv using the official installation script:**
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+After installation, add uv to your PATH if it's not automatically done:
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+You can verify the installation:
+```bash
+uv --version
+```
+
+**Using uv with this project:**
+
+Before running the script, install project dependencies using:
+```bash
+uv sync
+```
+
+This creates a virtual environment with all required dependencies. Then run commands with:
+```bash
+uv run ce-autostart.py [command]
+```
+
+The virtual environment is automatically created in `.venv` directory and will be reused for subsequent commands.
+
+### 3. protonhax
+
+protonhax is a tool for managing Proton Wine instances for Steam games.
+
+**Installation:**
+
+Clone the repository and follow the official instructions:
+```bash
+git clone https://github.com/jcnils/protonhax.git
+cd protonhax
+# Follow the installation instructions in the repository
+```
+
+Ensure the `protonhax` command is available in your PATH. You can test it:
+```bash
+protonhax ls
+```
+
+**GitHub Repository:** [jcnils/protonhax](https://github.com/jcnils/protonhax)
+
+### 4. CheatEngine
+
+CheatEngine needs to be installed or extracted to a location on your PC. The script will ask for the path during configuration.
+
+**Options:**
+
+- **Option A**: Extract CheatEngine to a subdirectory (e.g., `~/Games/CheatEngine/`)
+- **Option B**: Install CheatEngine using Wine or Proton
+- **Option C**: Use an existing CheatEngine installation
+
+Make sure you have the CheatEngine executable ready. Common names:
+- `cheatengine-x86_64.exe` (64-bit)
+- `cheatengine-i386.exe` (32-bit)
+- `cheatengine.exe`
+
+You can download CheatEngine from: https://www.cheatengine.org/
+
+### 5. Steam
+
+This script requires a working Steam installation on your Linux system. It typically looks for Steam at:
+- `~/.local/share/Steam` (default on Linux)
+
+## Dependencies
+
+Python dependencies are automatically installed via `uv sync`:
+
+- `requests>=2.31.0` - HTTP library for fetching from Steam API
+- `tomli_w>=1.0.0` - TOML file writing support
