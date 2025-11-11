@@ -494,3 +494,34 @@ Python dependencies are automatically installed via `uv sync`:
 - `requests>=2.31.0` - HTTP library for fetching from Steam API
 - `tomli_w>=1.0.0` - TOML file writing support
 - `rich>=13.0.0` - Terminal formatting for interactive UI and colored output
+
+## Built with Claude Code
+
+This project was developed using **Claude Code**, Anthropic's official CLI for Claude. The script was engineered and optimized using the **Claude Haiku 4.5** model.
+
+### About Claude Code
+
+[Claude Code](https://claude.com/claude-code) is Anthropic's interactive CLI tool that helps with software engineering tasks including:
+- Code development and optimization
+- Debugging and error resolution
+- Architecture and design implementation
+- Documentation and project management
+
+For more information:
+- **Claude Code Website**: https://claude.com/claude-code
+- **Claude Code Documentation**: https://docs.claude.com/en/docs/claude-code/
+- **Anthropic**: https://www.anthropic.com/
+
+### Development Model
+
+- **Model**: Claude Haiku 4.5 (`claude-haiku-4-5-20251001`)
+- **Features Implemented**:
+  - Interactive configuration wizard with path validation
+  - Steam game detection and LaunchOptions management
+  - VDF file parsing and writing for Steam config
+  - Steam API integration with local caching
+  - Interactive terminal UI with rich formatting
+  - App exclusion mechanism with regex patterns
+  - Batch operations with confirmation prompts
+
+The combination of Claude Code's development capabilities and Haiku's efficiency made rapid feature development and comprehensive functionality delivery possible.
