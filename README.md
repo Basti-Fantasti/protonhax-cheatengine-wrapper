@@ -4,23 +4,52 @@ Automatically launch CheatEngine for Steam games running on Proton with optional
 
 ## Setup
 
-1. **Configure the path** to your CheatEngine executable:
+1. **Quick Start (Interactive)**:
 
-   Edit `ce-autostart-config.toml`:
+   Run the interactive configuration wizard:
+   ```bash
+   uv run ce-autostart.py init
+   ```
+
+   This will guide you through:
+   - Setting the CheatEngine executable path
+   - Configuring your Steam installation directory
+   - Enabling/disabling the Steam API game title lookup feature
+
+   The wizard validates all paths before saving and preserves existing settings.
+
+2. **Manual Configuration**:
+
+   Edit `ce-autostart-config.toml` or create `~/.config/ce-autostart/config.toml`:
    ```toml
    [cheatengine]
    executable_path = "~/Games/CheatEngine/cheatengine-x86_64.exe"
+
+   [steam]
+   steam_path = "~/.local/share/Steam"
+   lookup_enabled = true
    ```
 
-   Or place a config file at `~/.config/ce-autostart/config.toml`
-
-2. **Requirements:**
+3. **Requirements:**
    - Python 3.11+
    - `uv` package manager installed
    - `protonhax` command available in your PATH
    - A Steam game running on Proton
 
 ## Usage
+
+### Interactive Setup
+
+```bash
+uv run ce-autostart.py init
+```
+
+Launches an interactive configuration wizard that:
+- Prompts for the CheatEngine executable path with validation
+- Asks for the Steam directory location (defaults to Linux Steam path)
+- Allows enabling/disabling Steam API game title lookup
+- Validates all paths exist before saving
+- Re-prompts on invalid input with helpful error messages
 
 ### Start CheatEngine (default)
 
