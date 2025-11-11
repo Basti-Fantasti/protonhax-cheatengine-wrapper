@@ -110,6 +110,131 @@ uv run ce-autostart.py remove-all-launchoptions
 
 Finds all games that have LaunchOptions configured, prompts for confirmation once, then removes LaunchOptions from all of them. All removed values are backed up before deletion. You'll be asked individually for each game if you want to remove its LaunchOptions.
 
+### Interactive Game Browser and Manager (Menu)
+
+```bash
+uv run ce-autostart.py menu
+```
+
+Launches an interactive terminal UI to browse, view, and manage your installed Steam games and their LaunchOptions settings. This provides a user-friendly alternative to command-line operations.
+
+#### Menu Navigation and Input Options
+
+**Main Game List Screen:**
+
+The menu displays a table with all installed games showing their ID, name, and LaunchOption status.
+
+| Input | Action |
+|-------|--------|
+| **↑ Arrow Up** | Move selection up |
+| **↓ Arrow Down** | Move selection down |
+| **Enter** | Select highlighted game and open options menu |
+| **Q** | Quit and exit menu |
+| **Esc** | Quit and exit menu |
+
+**Game Options Menu:**
+
+When you select a game, a submenu appears with the following options:
+
+| Input | Action |
+|-------|--------|
+| **M** | Modify LaunchOptions for the selected game |
+| **V** | View current LaunchOptions configuration |
+| **R** | Remove LaunchOptions from the selected game |
+| **C** | Cancel and return to game list |
+
+The menu provides real-time visual feedback showing the selected row highlighted in blue, making it easy to navigate through your game library.
+
+#### Menu Features
+
+- **Visual Game List**: Displays ID, name, and LaunchOption status in an easy-to-read table format
+- **Real-time Status Updates**: Immediately reflects changes to LaunchOption status after modifications
+- **View Configuration**: Inspect the exact LaunchOptions command for any game
+- **Quick Management**: Modify, remove, or add LaunchOptions without command-line arguments
+- **User-Friendly**: Color-coded output with clear navigation hints
+
+#### Usage Workflow Examples
+
+**Example 1: Quick Navigation and Selection**
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ Steam Games                                                     │
+├──────────┬──────────────────────────┬────────────────────────────┤
+│ ID       │ Game Name                │ LaunchOption Status        │
+├──────────┼──────────────────────────┼────────────────────────────┤
+│ 1228870  │ Baldur's Gate 3          │ Not Set                    │
+│ 2358720  │ Elden Ring               │ Configured                 │
+│ 570      │ Deus Ex: Human Revolu... │ Not Set                    │  <- Currently selected
+│ 1144200  │ Valheim                  │ Configured                 │
+│ 1391110  │ Stalker 2                │ Not Set                    │
+└──────────┴──────────────────────────┴────────────────────────────┘
+
+Navigation: Use ↑/↓ to move, Enter to select, Q/Esc to quit
+```
+
+**Example 2: Game Options Menu**
+
+After pressing Enter on a game:
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│ Selected Game: Elden Ring (ID: 2358720)                      │
+│ LaunchOption Status: Configured                              │
+│                                                              │
+│ Options:                                                     │
+│ M - Modify LaunchOptions                                    │
+│ V - View Current LaunchOptions                              │
+│ R - Remove LaunchOptions                                    │
+│ C - Cancel (back to menu)                                   │
+│                                                              │
+│ Choose option: [m/v/r/c] _                                  │
+└──────────────────────────────────────────────────────────────┘
+```
+
+**Example 3: Viewing LaunchOptions**
+
+After pressing V:
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│ Current LaunchOptions:                                       │
+│                                                              │
+│ protonhax init %COMMAND%                                     │
+│                                                              │
+│                                                              │
+│ Press Enter to continue...                                   │
+└──────────────────────────────────────────────────────────────┘
+```
+
+**Example 4: Modifying LaunchOptions**
+
+After pressing M:
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│ Game 'Elden Ring' already has LaunchOptions set.             │
+│ Do you want to overwrite them? (yes/no)                     │
+│                                                              │
+│ Original: protonhax init %COMMAND%                          │
+│ New:      protonhax init %COMMAND%                          │
+│                                                              │
+│ Answer: [y/n] _                                             │
+└──────────────────────────────────────────────────────────────┘
+```
+
+If confirmed:
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│ LaunchOptions updated.                                       │
+│                                                              │
+│ ✓ Backup created: launch_options_backup_20251111_150000.md  │
+│                                                              │
+│ Press Enter to continue...                                   │
+└──────────────────────────────────────────────────────────────┘
+```
+
 ## Configuration
 
 The script looks for config files in this order:
@@ -299,3 +424,4 @@ Python dependencies are automatically installed via `uv sync`:
 
 - `requests>=2.31.0` - HTTP library for fetching from Steam API
 - `tomli_w>=1.0.0` - TOML file writing support
+- `rich>=13.0.0` - Terminal formatting for interactive UI and colored output
