@@ -52,6 +52,22 @@ uv run ce-autostart.py modify-all-launchoptions
 
 Automatically detects all installed games from Steam's appmanifest files, prompts for confirmation once, then sets LaunchOptions for all games. All existing LaunchOptions are backed up before modification. You'll be asked individually for each game if it already has LaunchOptions set.
 
+### Remove LaunchOptions from a single game
+
+```bash
+uv run ce-autostart.py remove-launchoptions <GAME_ID>
+```
+
+Removes the LaunchOptions from a specific game in localconfig.vdf. Prompts for confirmation if the game currently has LaunchOptions set. The original value is backed up before removal.
+
+### Remove LaunchOptions from all games
+
+```bash
+uv run ce-autostart.py remove-all-launchoptions
+```
+
+Finds all games that have LaunchOptions configured, prompts for confirmation once, then removes LaunchOptions from all of them. All removed values are backed up before deletion. You'll be asked individually for each game if you want to remove its LaunchOptions.
+
 ## Configuration
 
 The script looks for config files in this order:
@@ -83,18 +99,24 @@ launch_options_template = "protonhax init %COMMAND%"
 
 ### LaunchOptions Management
 
-The script can automatically configure Steam's LaunchOptions to report running games to protonhax:
+The script can automatically configure Steam's LaunchOptions to report running games to protonhax, and can also remove them:
 
+**Setting LaunchOptions:**
 - **Single game**: `uv run ce-autostart.py modify-launchoptions <GAME_ID>`
 - **All games**: `uv run ce-autostart.py modify-all-launchoptions`
+
+**Removing LaunchOptions:**
+- **Single game**: `uv run ce-autostart.py remove-launchoptions <GAME_ID>`
+- **All games**: `uv run ce-autostart.py remove-all-launchoptions`
 
 #### How it works
 
 1. **Game Detection**: Automatically finds installed games by reading `appmanifest_*.acf` files from the Steam directory
-2. **localconfig.vdf Update**: Modifies your Steam config to set LaunchOptions to the configured template (default: `protonhax init %COMMAND%`)
-3. **Automatic Backups**: Before modifying any existing LaunchOptions, the script backs up the original values to a timestamped markdown file (e.g., `launch_options_backup_20251111_143022.md`)
-4. **User Confirmation**: Prompts you before replacing existing LaunchOptions, letting you skip individual games or confirm all at once
+2. **localconfig.vdf Update**: Modifies your Steam config to set or remove LaunchOptions
+3. **Automatic Backups**: Before any modification (add or remove), the script backs up the original values to a timestamped markdown file (e.g., `launch_options_backup_20251111_143022.md`)
+4. **User Confirmation**: Prompts you before modifying existing LaunchOptions, letting you skip individual games or confirm all at once
 5. **Configuration**: The LaunchOptions template is configurable in the TOML config file as `steam.launch_options_template`
+6. **Safe Removal**: Remove commands find games with LaunchOptions already set, so you don't need to specify all games - only the ones you want to modify
 
 #### Backup Format
 

@@ -7,6 +7,8 @@ Commands:
   start [game_uid]              - Start CheatEngine for a running game (default)
   modify-launchoptions <ID>     - Set LaunchOptions for a specific game
   modify-all-launchoptions      - Set LaunchOptions for all installed games
+  remove-launchoptions <ID>     - Remove LaunchOptions from a specific game
+  remove-all-launchoptions      - Remove LaunchOptions from all games with them set
 """
 
 import subprocess
@@ -575,6 +577,171 @@ def cmd_modify_all_launchoptions(config: dict) -> None:
     print(f"{'='*50}")
 
 
+def remove_launch_options(
+    app_id: str,
+    localconfig_path: Path,
+    ask_if_exists: bool = True
+) -> bool:
+    """
+    Remove LaunchOptions for a specific game in localconfig.vdf.
+    Returns True if removed, False otherwise.
+    """
+    try:
+        with open(localconfig_path, "r") as f:
+            content = f.read()
+
+        localconfig_data = parse_vdf(content)
+
+        # Navigate to the app section
+        # Structure: Software -> Valve -> Steam -> apps -> <app_id>
+        try:
+            apps = (
+                localconfig_data
+                .get("Software", {})
+                .get("Valve", {})
+                .get("Steam", {})
+                .get("apps", {})
+            )
+
+            if app_id not in apps:
+                print(f"ℹ Game {app_id}: Not found in localconfig.vdf")
+                return False
+
+            app_section = apps[app_id]
+
+            if not isinstance(app_section, dict):
+                print(f"ℹ Game {app_id}: Invalid app section structure")
+                return False
+
+        except (KeyError, TypeError, AttributeError):
+            print(f"Error: Could not navigate to app {app_id} in localconfig.vdf", file=sys.stderr)
+            return False
+
+        # Check if LaunchOptions exists
+        if "LaunchOptions" not in app_section:
+            print(f"ℹ Game {app_id}: No LaunchOptions to remove")
+            return False
+
+        current_value = app_section["LaunchOptions"]
+
+        if ask_if_exists:
+            print(f"\n⚠ Game {app_id}:")
+            print(f"  Current value: {current_value}")
+            response = input(f"  Remove LaunchOptions? (y/n/skip): ").strip().lower()
+
+            if response == "skip" or response == "n":
+                print(f"  Skipped")
+                return False
+            elif response != "y":
+                print(f"  Invalid input, skipping")
+                return False
+
+        # Backup the value being removed
+        create_backup(app_id, current_value)
+
+        # Remove the LaunchOptions
+        del app_section["LaunchOptions"]
+
+        # Write back to file
+        vdf_output = write_vdf(localconfig_data)
+        with open(localconfig_path, "w") as f:
+            f.write(vdf_output)
+
+        print(f"✓ Removed game {app_id}: LaunchOptions deleted")
+        return True
+
+    except Exception as e:
+        print(f"Error removing LaunchOptions for {app_id}: {e}", file=sys.stderr)
+        return False
+
+
+def cmd_remove_launchoptions(game_id: str, config: dict) -> None:
+    """Handle remove-launchoptions command for a single game."""
+    if not game_id:
+        print("Error: Game ID required for remove-launchoptions command", file=sys.stderr)
+        sys.exit(1)
+
+    steam_config = config.get("steam", {})
+    steam_path = steam_config.get("steam_path", "~/.local/share/Steam")
+
+    localconfig_path = find_localconfig_vdf(steam_path)
+    if not localconfig_path:
+        print("Error: Could not find localconfig.vdf", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"Found localconfig.vdf at: {localconfig_path}")
+
+    if remove_launch_options(game_id, localconfig_path, ask_if_exists=True):
+        print(f"\n✓ Successfully removed LaunchOptions for game {game_id}")
+    else:
+        print(f"\nℹ No action taken for game {game_id}")
+
+
+def cmd_remove_all_launchoptions(config: dict) -> None:
+    """Handle remove-all-launchoptions command for all games with LaunchOptions."""
+    steam_config = config.get("steam", {})
+    steam_path = steam_config.get("steam_path", "~/.local/share/Steam")
+
+    localconfig_path = find_localconfig_vdf(steam_path)
+    if not localconfig_path:
+        print("Error: Could not find localconfig.vdf", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"Found localconfig.vdf at: {localconfig_path}")
+
+    # Parse the file to find games with LaunchOptions
+    with open(localconfig_path, "r") as f:
+        content = f.read()
+
+    localconfig_data = parse_vdf(content)
+
+    try:
+        apps = (
+            localconfig_data
+            .get("Software", {})
+            .get("Valve", {})
+            .get("Steam", {})
+            .get("apps", {})
+        )
+
+        games_with_options = []
+        for app_id, app_data in apps.items():
+            if isinstance(app_data, dict) and "LaunchOptions" in app_data:
+                games_with_options.append(app_id)
+
+    except (KeyError, TypeError, AttributeError):
+        print("Error: Could not read app data from localconfig.vdf", file=sys.stderr)
+        sys.exit(1)
+
+    if not games_with_options:
+        print("No games with LaunchOptions found")
+        return
+
+    print(f"\nFound {len(games_with_options)} games with LaunchOptions set")
+    print(f"⚠ WARNING: All LaunchOptions will be backed up before removal.")
+
+    response = input(f"\nRemove LaunchOptions for all {len(games_with_options)} games? (y/n): ").strip().lower()
+    if response != "y":
+        print("Cancelled")
+        return
+
+    removed_count = 0
+    skipped_count = 0
+
+    for app_id in sorted(games_with_options):
+        if remove_launch_options(app_id, localconfig_path, ask_if_exists=True):
+            removed_count += 1
+        else:
+            skipped_count += 1
+
+    print(f"\n{'='*50}")
+    print(f"Summary:")
+    print(f"  Removed: {removed_count}")
+    print(f"  Skipped: {skipped_count}")
+    print(f"  Total:   {len(games_with_options)}")
+    print(f"{'='*50}")
+
+
 def cmd_start(uid: str | None, config: dict) -> None:
     """Handle start command to launch CheatEngine."""
     if "cheatengine" not in config or "executable_path" not in config.get("cheatengine", {}):
@@ -621,12 +788,18 @@ def main() -> None:
         cmd_modify_launchoptions(arg, config)
     elif cmd == "modify-all-launchoptions":
         cmd_modify_all_launchoptions(config)
+    elif cmd == "remove-launchoptions":
+        cmd_remove_launchoptions(arg, config)
+    elif cmd == "remove-all-launchoptions":
+        cmd_remove_all_launchoptions(config)
     else:
         print(f"Error: Unknown command '{cmd}'", file=sys.stderr)
         print("\nUsage:", file=sys.stderr)
         print("  ce-autostart.py [start] [uid]              - Start CheatEngine for a game", file=sys.stderr)
         print("  ce-autostart.py modify-launchoptions <ID>  - Set LaunchOptions for a game", file=sys.stderr)
         print("  ce-autostart.py modify-all-launchoptions   - Set LaunchOptions for all games", file=sys.stderr)
+        print("  ce-autostart.py remove-launchoptions <ID>  - Remove LaunchOptions from a game", file=sys.stderr)
+        print("  ce-autostart.py remove-all-launchoptions   - Remove LaunchOptions from all games", file=sys.stderr)
         sys.exit(1)
 
 
